@@ -129,9 +129,6 @@ struct camera {
 	MMAL_PORT_T *port;
 	struct buffer_pool *pool;
 
-	bool enabled;
-	struct camera_config config;
-
 	MMAL_ES_FORMAT_T *output_format;
 	MMAL_ES_FORMAT_T *intermediate_format;
 	RASPICAM_CAMERA_PARAMETERS parameters;
@@ -188,7 +185,6 @@ void camera_exit(struct camera *camera)
 int camera_enable(struct camera *camera)
 {
 	MMAL_BUFFER_HEADER_T *buf;
-	MMAL_ES_FORMAT_T *format;
 	MMAL_STATUS_T ret;
 	MMAL_PORT_T *ports[2];
 	int i, iret;
@@ -246,20 +242,11 @@ int camera_enable(struct camera *camera)
 		goto fail;
 	}
 
-	if (camera->config.source_w != camera->config.out_w || camera->config.source_h != camera->config.out_h) {
+	if (camera->output_format->es->video.width != camera->intermediate_format->es->video.width ||
+	    camera->output_format->es->video.height != camera->intermediate_format->es->video.height) {
 		camera->port = camera->isp->output[0];
 
-		format = camera->component->output[0]->format;
-		format->encoding = MMAL_ENCODING_OPAQUE;
-		format->encoding_variant = MMAL_ENCODING_I420;
-		format->es->video.width = camera->config.source_w;
-		format->es->video.height = camera->config.source_h;
-		format->es->video.crop.x = 0;
-		format->es->video.crop.y = 0;
-		format->es->video.crop.width = camera->config.source_w;
-		format->es->video.crop.height = camera->config.source_h;
-		format->es->video.frame_rate.num = camera->config.fps;
-		format->es->video.frame_rate.den = 1;
+		mmal_format_full_copy(camera->component->output[0]->format, camera->intermediate_format);
 		ret = mmal_port_format_commit(camera->component->output[0]);
 		if (ret != MMAL_SUCCESS)
 		{
@@ -267,7 +254,7 @@ int camera_enable(struct camera *camera)
 			goto fail;
 		}
 
-		mmal_format_full_copy(camera->isp->input[0]->format, format);
+		mmal_format_full_copy(camera->isp->input[0]->format, camera->intermediate_format);
 		ret = mmal_port_format_commit(camera->isp->input[0]);
 		if (ret != MMAL_SUCCESS)
 		{
@@ -293,17 +280,7 @@ int camera_enable(struct camera *camera)
 	}
 	camera->port->userdata = (void *)camera;
 
-	format = camera->port->format;
-	format->encoding = MMAL_ENCODING_I420;
-	format->encoding_variant = MMAL_ENCODING_I420;
-	format->es->video.width = camera->config.out_w;
-	format->es->video.height = camera->config.out_h;
-	format->es->video.crop.x = 0;
-	format->es->video.crop.y = 0;
-	format->es->video.crop.width = camera->config.out_w;
-	format->es->video.crop.height = camera->config.out_h;
-	format->es->video.frame_rate.num = camera->config.fps;
-	format->es->video.frame_rate.den = 1;
+	mmal_format_full_copy(camera->port->format, camera->output_format);
 	ret = mmal_port_format_commit(camera->port);
 	if (ret != MMAL_SUCCESS)
 	{
@@ -369,8 +346,6 @@ int camera_enable(struct camera *camera)
 	if (i != camera->port->buffer_num)
 		fprintf(stderr, "Queued an unexpected number of buffers (%d)\n", i);
 
-	camera->enabled = true;
-
 	return 0;
 
 fail:
@@ -397,33 +372,55 @@ struct camera *camera_init(uint32_t width, uint32_t height, unsigned int fps)
 	if (!camera)
 		return NULL;
 
+	camera->output_format = mmal_format_alloc();
+	camera->intermediate_format = mmal_format_alloc();
+
+	camera->output_format->encoding = MMAL_ENCODING_I420;
+	camera->output_format->encoding_variant = MMAL_ENCODING_I420;
+	camera->output_format->es->video.width = width;
+	camera->output_format->es->video.height = height;
+	camera->output_format->es->video.crop.x = 0;
+	camera->output_format->es->video.crop.y = 0;
+	camera->output_format->es->video.crop.width = width;
+	camera->output_format->es->video.crop.height = height;
+	camera->output_format->es->video.frame_rate.num = fps;
+	camera->output_format->es->video.frame_rate.den = 1;
+
+	mmal_format_full_copy(camera->intermediate_format, camera->output_format);
+
+	camera->intermediate_format->encoding = MMAL_ENCODING_OPAQUE;
+	camera->intermediate_format->encoding_variant = MMAL_ENCODING_OPAQUE;
+
 	raspicamcontrol_set_defaults(&camera->parameters);
-
-	camera->config = (struct camera_config){
-		.source_w = NATIVE_WIDTH,
-		.source_h = NATIVE_HEIGHT,
-		.crop_rect = { .x = 0.0, .y = 0.0, .w = 1.0, .h = 1.0 },
-		.fps = fps,
-
-		.out_w = width,
-		.out_h = height,
-	};
 
 	return camera;
 }
 
 int camera_set_fps(struct camera *camera, unsigned int fps)
 {
+	camera->output_format->es->video.frame_rate.num = fps;
+	camera->intermediate_format->es->video.frame_rate.num = fps;
+
 	return 0;
 }
 
 int camera_set_frame_size(struct camera *camera, uint32_t width, uint32_t height)
 {
+	camera->intermediate_format->es->video.width = width;
+	camera->intermediate_format->es->video.height = height;
+	camera->intermediate_format->es->video.crop.width = width;
+	camera->intermediate_format->es->video.crop.height = height;
+
 	return 0;
 }
 
 int camera_set_out_size(struct camera *camera, uint32_t width, uint32_t height)
 {
+	camera->output_format->es->video.width = width;
+	camera->output_format->es->video.height = height;
+	camera->output_format->es->video.crop.width = width;
+	camera->output_format->es->video.crop.height = height;
+
 	return 0;
 }
 
