@@ -187,7 +187,6 @@ void camera_exit(struct camera *camera)
 
 int camera_enable(struct camera *camera)
 {
-	RASPICAM_CAMERA_PARAMETERS default_parameters = { 0 };
 	MMAL_BUFFER_HEADER_T *buf;
 	MMAL_ES_FORMAT_T *format;
 	MMAL_STATUS_T ret;
@@ -208,7 +207,6 @@ int camera_enable(struct camera *camera)
 		fprintf(stderr, "Failed to create component\n");
 		goto fail;
 	}
-
 
 	if (camera->component->output_num != 3) {
 		fprintf(stderr, "Unexpected number of output ports: %d\n", camera->component->output_num);
@@ -242,8 +240,7 @@ int camera_enable(struct camera *camera)
 		goto fail;
 	}
 
-	raspicamcontrol_set_defaults(&default_parameters);
-	iret = raspicamcontrol_set_all_parameters(camera->component, &default_parameters);
+	iret = raspicamcontrol_set_all_parameters(camera->component, &camera->parameters);
 	if (iret != 0) {
 		fprintf(stderr, "Setting raspicam defaults failed: %d\n", iret);
 		goto fail;
@@ -399,6 +396,8 @@ struct camera *camera_init(uint32_t width, uint32_t height, unsigned int fps)
 
 	if (!camera)
 		return NULL;
+
+	raspicamcontrol_set_defaults(&camera->parameters);
 
 	camera->config = (struct camera_config){
 		.source_w = NATIVE_WIDTH,
