@@ -427,12 +427,36 @@ int camera_set_out_size(struct camera *camera, uint32_t width, uint32_t height)
 	return 0;
 }
 
-int camera_set_crop(struct camera *camera, double top, double left, double width, double height)
+int camera_set_crop(struct camera *camera, double left, double top, double width, double height)
 {
+	camera->parameters.roi = (PARAM_FLOAT_RECT_T){ .x = left, .y = top, .w = width, .h = height };
+
+	if (camera->port->is_enabled) {
+		return raspicamcontrol_set_ROI(camera->component, camera->parameters.roi);
+	}
+
 	return 0;
 }
 
 int camera_set_transform(struct camera *camera, int rot, int hflip, int vflip)
 {
+	camera->parameters.hflip = hflip;
+	camera->parameters.vflip = vflip;
+	camera->parameters.rotation = rot;
+
+	if (camera->port->is_enabled) {
+		int ret;
+
+		ret = raspicamcontrol_set_flips(camera->component, camera->parameters.hflip, camera->parameters.vflip);
+		if (ret != MMAL_SUCCESS) {
+			return ret;
+		}
+
+		ret = raspicamcontrol_set_rotation(camera->component, camera->parameters.rotation);
+		if (ret != MMAL_SUCCESS) {
+			return ret;
+		}
+	}
+
 	return 0;
 }

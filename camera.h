@@ -30,5 +30,5 @@ int camera_disable(struct camera *camera);
 int camera_set_frame_size(struct camera *camera, uint32_t width, uint32_t height);
 int camera_set_fps(struct camera *camera, unsigned int fps);
 int camera_set_out_size(struct camera *camera, uint32_t width, uint32_t height);
-int camera_set_crop(struct camera *camera, double top, double left, double width, double height);
+int camera_set_crop(struct camera *camera, double left, double top, double width, double height);
 int camera_set_transform(struct camera *camera, int rot, int hflip, int vflip);
