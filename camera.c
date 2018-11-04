@@ -179,6 +179,10 @@ static void camera_control_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
 void camera_exit(struct camera *camera)
 {
 	camera_disable(camera);
+
+	mmal_format_free(camera->output_format);
+	mmal_format_free(camera->intermediate_format);
+
 	free(camera);
 }
 
@@ -258,7 +262,7 @@ int camera_enable(struct camera *camera)
 		ret = mmal_port_format_commit(camera->isp->input[0]);
 		if (ret != MMAL_SUCCESS)
 		{
-			fprintf(stderr, "Couldn't set camera output port format: %d\n", ret);
+			fprintf(stderr, "Couldn't set isp input port format: %d\n", ret);
 			goto fail;
 		}
 
@@ -284,7 +288,7 @@ int camera_enable(struct camera *camera)
 	ret = mmal_port_format_commit(camera->port);
 	if (ret != MMAL_SUCCESS)
 	{
-		fprintf(stderr, "Couldn't set isp input port format: %d\n", ret);
+		fprintf(stderr, "Couldn't set output port format: %d\n", ret);
 		goto fail;
 	}
 
@@ -375,6 +379,7 @@ struct camera *camera_init(uint32_t width, uint32_t height, unsigned int fps)
 	camera->output_format = mmal_format_alloc();
 	camera->intermediate_format = mmal_format_alloc();
 
+	camera->output_format->type = MMAL_ES_TYPE_VIDEO;
 	camera->output_format->encoding = MMAL_ENCODING_I420;
 	camera->output_format->encoding_variant = MMAL_ENCODING_I420;
 	camera->output_format->es->video.width = width;
@@ -389,7 +394,7 @@ struct camera *camera_init(uint32_t width, uint32_t height, unsigned int fps)
 	mmal_format_full_copy(camera->intermediate_format, camera->output_format);
 
 	camera->intermediate_format->encoding = MMAL_ENCODING_OPAQUE;
-	camera->intermediate_format->encoding_variant = MMAL_ENCODING_OPAQUE;
+	camera->intermediate_format->encoding_variant = MMAL_ENCODING_I420;
 
 	raspicamcontrol_set_defaults(&camera->parameters);
 
@@ -428,7 +433,7 @@ int camera_set_crop(struct camera *camera, double left, double top, double width
 {
 	camera->parameters.roi = (PARAM_FLOAT_RECT_T){ .x = left, .y = top, .w = width, .h = height };
 
-	if (camera->port->is_enabled) {
+	if (camera->port && camera->port->is_enabled) {
 		return raspicamcontrol_set_ROI(camera->component, camera->parameters.roi);
 	}
 
@@ -441,7 +446,7 @@ int camera_set_transform(struct camera *camera, int rot, int hflip, int vflip)
 	camera->parameters.vflip = vflip;
 	camera->parameters.rotation = rot;
 
-	if (camera->port->is_enabled) {
+	if (camera->port && camera->port->is_enabled) {
 		int ret;
 
 		ret = raspicamcontrol_set_flips(camera->component, camera->parameters.hflip, camera->parameters.vflip);

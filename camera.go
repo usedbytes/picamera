@@ -76,8 +76,8 @@ func NewCamera(width, height, fps uint) *Camera {
 	}
 
 	var frameSize image.Point
-	for _, frameSize := range frameSizes {
-		if width < uint(frameSize.X) || height < uint(frameSize.Y) {
+	for _, frameSize = range frameSizes {
+		if width <= uint(frameSize.X) || height <= uint(frameSize.Y) {
 			break
 		}
 	}
@@ -177,6 +177,10 @@ func (c *Camera) GetFPS() uint {
 func (c *Camera) SetCrop(crop Rectangle) error {
 	if !crop.In(Rect(0.0, 0.0, 1.0, 1.0)) {
 		return fmt.Errorf("Crop rectangle must be inside (0,0)-(1,1)")
+	}
+
+	if crop.Dx() <= 0 || crop.Dy() <= 0 {
+		return fmt.Errorf("Empty crop rect")
 	}
 
 	ret := C.camera_set_crop(c.c, C.double(crop.Min.X), C.double(crop.Min.Y), C.double(crop.Dx()), C.double(crop.Dy()))
