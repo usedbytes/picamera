@@ -6,6 +6,12 @@ struct camera;
 struct camera_buffer {
 	/* Opaque handle - don't touch! */
 	void *hnd;
+
+	uint32_t width, height;
+	uint32_t encoding;
+	uint8_t *data[3];
+	unsigned int pitch[3];
+	unsigned int length[3];
 };
 
 struct camera_config {

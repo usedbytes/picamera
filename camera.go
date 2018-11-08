@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"unsafe"
 )
 
 type Camera struct {
@@ -23,6 +24,13 @@ type Camera struct {
 	enabled bool
 	rot int
 	hflip, vflip bool
+}
+
+type Frame struct {
+	image.Gray
+
+	camera *Camera
+	c *C.struct_camera_buffer
 }
 
 type Point struct {
@@ -242,7 +250,28 @@ func (c *Camera) GetFrame() (*Frame, error) {
 		return nil, fmt.Errorf("Couldn't dequeue frame")
 	}
 
-	return newFrame(c, buf), nil
+	var sl = struct {
+		addr uintptr
+		len  int
+		cap  int
+	}{uintptr(unsafe.Pointer(buf.data[0])), int(buf.length[0]), int(buf.length[0])}
+
+	// Use unsafe to turn sl into a []byte.
+	b := *(*[]byte)(unsafe.Pointer(&sl))
+
+	return &Frame{
+		Gray: image.Gray{
+			Pix: b,
+			Stride: int(buf.pitch[0]),
+			Rect: image.Rect(0, 0, int(buf.width), int(buf.height)),
+		},
+		camera: c,
+		c: buf,
+	}, nil
+}
+
+func (f *Frame) Release() {
+	C.camera_queue_buffer(f.camera.c, f.c)
 }
 
 func (c *Camera) Close() {

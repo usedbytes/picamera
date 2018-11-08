@@ -134,17 +134,81 @@ struct camera {
 	RASPICAM_CAMERA_PARAMETERS parameters;
 };
 
+int hsub(uint32_t format, int plane) {
+	switch (format) {
+		case MMAL_ENCODING_I420:
+		case MMAL_ENCODING_YV12:
+			return plane ? 2 : 1;
+		default:
+			return 1;
+	}
+}
+
+int vsub(uint32_t format, int plane) {
+	switch (format) {
+		case MMAL_ENCODING_I420:
+		case MMAL_ENCODING_YV12:
+			return plane ? 2 : 1;
+		default:
+			return 1;
+	}
+}
+
+int bytes_per_pixel(uint32_t format, int plane)
+{
+	switch (format) {
+		case MMAL_ENCODING_I420:
+		case MMAL_ENCODING_YV12:
+			return 1;
+		case MMAL_ENCODING_YUYV:
+		case MMAL_ENCODING_YVYU:
+		case MMAL_ENCODING_UYVY:
+		case MMAL_ENCODING_VYUY:
+		case MMAL_ENCODING_ARGB:
+		case MMAL_ENCODING_RGBA:
+		case MMAL_ENCODING_ABGR:
+		case MMAL_ENCODING_BGRA:
+		case MMAL_ENCODING_RGB32:
+		case MMAL_ENCODING_BGR32:
+			return 4;
+		case MMAL_ENCODING_BGR24:
+		case MMAL_ENCODING_RGB24:
+			return 3;
+		default:
+			return 0;
+	}
+}
+
 struct camera_buffer *camera_dequeue_buffer(struct camera *camera)
 {
-	struct camera_buffer *buf = malloc(sizeof(*buf));
+	int i;
+	uint32_t width, height, format;
+	MMAL_BUFFER_HEADER_T *mbuf;
+	MMAL_BUFFER_HEADER_VIDEO_SPECIFIC_T *vbuf;
+	struct camera_buffer *buf = calloc(1, sizeof(*buf));
 	if (!buf)
 		return buf;
 
-	buf->hnd = mmal_queue_timedwait(camera->pool->ready_queue, 1000);
-	if (!buf->hnd) {
+	mbuf = mmal_queue_timedwait(camera->pool->ready_queue, 1000);
+	if (!mbuf) {
 		fprintf(stderr, "Couldn't dequeue buffer\n");
 		free(buf);
 		return NULL;
+	}
+	buf->hnd = mbuf;
+
+	vbuf = (MMAL_BUFFER_HEADER_VIDEO_SPECIFIC_T *)mbuf->type;
+
+	buf->encoding = camera->output_format->encoding;
+	buf->width = camera->output_format->es->video.width;
+	buf->height = camera->output_format->es->video.height;
+
+	for (i = 0; i < vbuf->planes; i++) {
+		uint32_t height = buf->height / vsub(buf->encoding, i);
+		uint32_t width = buf->width / hsub(buf->encoding, i);
+		buf->data[i] = mbuf->data + vbuf->offset[i];
+		buf->pitch[i] = vbuf->pitch[i];
+		buf->length[i] = vbuf->pitch[i] * (height - 1) + (width * bytes_per_pixel(buf->encoding, i));
 	}
 
 	return buf;
