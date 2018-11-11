@@ -179,7 +179,7 @@ int bytes_per_pixel(uint32_t format, int plane)
 	}
 }
 
-struct camera_buffer *camera_dequeue_buffer(struct camera *camera)
+struct camera_buffer *camera_dequeue_buffer(struct camera *camera, uint32_t timeout_ms)
 {
 	int i;
 	uint32_t width, height, format;
@@ -189,9 +189,8 @@ struct camera_buffer *camera_dequeue_buffer(struct camera *camera)
 	if (!buf)
 		return buf;
 
-	mbuf = mmal_queue_timedwait(camera->pool->ready_queue, 1000);
+	mbuf = mmal_queue_timedwait(camera->pool->ready_queue, timeout_ms);
 	if (!mbuf) {
-		fprintf(stderr, "Couldn't dequeue buffer\n");
 		free(buf);
 		return NULL;
 	}

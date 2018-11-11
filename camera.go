@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"time"
 	"unsafe"
 )
 
@@ -240,12 +241,12 @@ func (c *Camera) Disable() {
 	}
 }
 
-func (c *Camera) GetFrame() (*Frame, error) {
+func (c *Camera) GetFrame(timeout time.Duration) (*Frame, error) {
 	if !c.enabled {
 		return nil, fmt.Errorf("Camera not enabled")
 	}
 
-	buf := C.camera_dequeue_buffer(c.c)
+	buf := C.camera_dequeue_buffer(c.c, C.uint32_t(timeout.Nanoseconds() / 1000000))
 	if buf == nil {
 		return nil, fmt.Errorf("Couldn't dequeue frame")
 	}

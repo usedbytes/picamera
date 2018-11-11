@@ -23,7 +23,7 @@ struct camera_config {
 };
 
 /* Wait for a frame to be available, and return it */
-struct camera_buffer *camera_dequeue_buffer(struct camera *camera);
+struct camera_buffer *camera_dequeue_buffer(struct camera *camera, uint32_t timeout_ms);
 /* Return a buffer once it's finished with */
 void camera_queue_buffer(struct camera *camera, struct camera_buffer *buf);
 
