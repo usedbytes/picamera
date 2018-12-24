@@ -27,11 +27,16 @@ type Camera struct {
 	hflip, vflip bool
 }
 
-type Frame struct {
+type GrayFrame struct {
 	image.Gray
 
 	camera *Camera
 	c *C.struct_camera_buffer
+}
+
+type Frame interface {
+	image.Image
+	Release()
 }
 
 type Point struct {
@@ -241,7 +246,7 @@ func (c *Camera) Disable() {
 	}
 }
 
-func (c *Camera) GetFrame(timeout time.Duration) (*Frame, error) {
+func (c *Camera) GetFrame(timeout time.Duration) (Frame, error) {
 	if !c.enabled {
 		return nil, fmt.Errorf("Camera not enabled")
 	}
@@ -260,7 +265,7 @@ func (c *Camera) GetFrame(timeout time.Duration) (*Frame, error) {
 	// Use unsafe to turn sl into a []byte.
 	b := *(*[]byte)(unsafe.Pointer(&sl))
 
-	return &Frame{
+	return &GrayFrame{
 		Gray: image.Gray{
 			Pix: b,
 			Stride: int(buf.pitch[0]),
@@ -271,7 +276,7 @@ func (c *Camera) GetFrame(timeout time.Duration) (*Frame, error) {
 	}, nil
 }
 
-func (f *Frame) Release() {
+func (f *GrayFrame) Release() {
 	C.camera_queue_buffer(f.camera.c, f.c)
 }
 
