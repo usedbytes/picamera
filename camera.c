@@ -249,6 +249,20 @@ void camera_exit(struct camera *camera)
 	free(camera);
 }
 
+static bool needs_isp(struct camera *camera)
+{
+	if (camera->output_format->es->video.width != camera->intermediate_format->es->video.width)
+		return true;
+
+	if (camera->output_format->es->video.height != camera->intermediate_format->es->video.height)
+		return true;
+
+	if (camera->output_format->encoding != camera->intermediate_format->encoding)
+		return true;
+
+	return false;
+}
+
 int camera_enable(struct camera *camera)
 {
 	MMAL_BUFFER_HEADER_T *buf;
@@ -309,8 +323,7 @@ int camera_enable(struct camera *camera)
 		goto fail;
 	}
 
-	if (camera->output_format->es->video.width != camera->intermediate_format->es->video.width ||
-	    camera->output_format->es->video.height != camera->intermediate_format->es->video.height) {
+	if (needs_isp(camera)) {
 		camera->port = camera->isp->output[0];
 
 		mmal_format_full_copy(camera->component->output[0]->format, camera->intermediate_format);
@@ -462,6 +475,35 @@ struct camera *camera_init(uint32_t width, uint32_t height, unsigned int fps)
 	raspicamcontrol_set_defaults(&camera->parameters);
 
 	return camera;
+}
+
+int camera_set_format(struct camera *camera, uint32_t format)
+{
+	switch (format) {
+		case MMAL_ENCODING_I420:
+		case MMAL_ENCODING_YV12:
+		case MMAL_ENCODING_YUYV:
+		case MMAL_ENCODING_YVYU:
+		case MMAL_ENCODING_UYVY:
+		case MMAL_ENCODING_VYUY:
+		case MMAL_ENCODING_ARGB:
+		case MMAL_ENCODING_RGBA:
+		case MMAL_ENCODING_ABGR:
+		case MMAL_ENCODING_BGRA:
+		case MMAL_ENCODING_RGB32:
+		case MMAL_ENCODING_BGR32:
+		case MMAL_ENCODING_BGR24:
+		case MMAL_ENCODING_RGB24:
+			/* Valid */
+			break;
+		default:
+			return MMAL_EINVAL;
+	}
+
+	camera->output_format->encoding = format;
+	camera->output_format->encoding_variant = format;
+
+	return 0;
 }
 
 int camera_set_fps(struct camera *camera, unsigned int fps)

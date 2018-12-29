@@ -14,6 +14,24 @@ import (
 	"unsafe"
 )
 
+type Format C.uint32_t
+const (
+	FORMAT_I420 Format = C.MMAL_ENCODING_I420
+	FORMAT_YV12 = C.MMAL_ENCODING_YV12
+	FORMAT_YUYV = C.MMAL_ENCODING_YUYV
+	FORMAT_YVYU = C.MMAL_ENCODING_YVYU
+	FORMAT_UYVY = C.MMAL_ENCODING_UYVY
+	FORMAT_VYUY = C.MMAL_ENCODING_VYUY
+	FORMAT_ARGB = C.MMAL_ENCODING_ARGB
+	FORMAT_RGBA = C.MMAL_ENCODING_RGBA
+	FORMAT_ABGR = C.MMAL_ENCODING_ABGR
+	FORMAT_BGRA = C.MMAL_ENCODING_BGRA
+	FORMAT_RGB32 = C.MMAL_ENCODING_RGB32
+	FORMAT_BGR32 = C.MMAL_ENCODING_BGR32
+	FORMAT_BGR24 = C.MMAL_ENCODING_BGR24
+	FORMAT_RGB24 = C.MMAL_ENCODING_RGB24
+)
+
 type Camera struct {
 	c *C.struct_camera
 
@@ -25,13 +43,27 @@ type Camera struct {
 	enabled bool
 	rot int
 	hflip, vflip bool
+	format Format
+}
+
+type buffer struct {
+	camera *Camera
+	c *C.struct_camera_buffer
 }
 
 type GrayFrame struct {
 	image.Gray
+	buffer
+}
 
-	camera *Camera
-	c *C.struct_camera_buffer
+type RGBFrame struct {
+	image.NRGBA
+	buffer
+}
+
+type YCbCrFrame struct {
+	image.YCbCr
+	buffer
 }
 
 type Frame interface {
@@ -228,6 +260,20 @@ func (c *Camera) GetTransform() (int, bool, bool) {
 	return c.rot, c.hflip, c.vflip
 }
 
+func (c *Camera) SetFormat(format Format) error {
+	if c.enabled {
+		return fmt.Errorf("Can't set format when enabled")
+	}
+
+	ret := C.camera_set_format(c.c, C.uint32_t(format))
+	if ret != C.MMAL_SUCCESS {
+		return getError(ret)
+	}
+	c.format = format
+
+	return nil
+}
+
 func (c *Camera) Enabled() bool {
 	return c.enabled
 }
@@ -246,6 +292,33 @@ func (c *Camera) Disable() {
 	}
 }
 
+func formatNumPlanes(format Format) int {
+	switch format {
+	case FORMAT_I420:
+		return 3
+	case FORMAT_YV12:
+		// XXX: No idea why this only has one plane.
+		// But, that's what MMAL says - one plane, with pitch == width.
+		// Just a grayscale image?
+		return 1
+	case FORMAT_YUYV:
+	case FORMAT_YVYU:
+	case FORMAT_UYVY:
+	case FORMAT_VYUY:
+	case FORMAT_ARGB:
+	case FORMAT_RGBA:
+	case FORMAT_ABGR:
+	case FORMAT_BGRA:
+	case FORMAT_RGB32:
+	case FORMAT_BGR32:
+	case FORMAT_BGR24:
+	case FORMAT_RGB24:
+		return 1
+	}
+
+	return 0
+}
+
 func (c *Camera) GetFrame(timeout time.Duration) (Frame, error) {
 	if !c.enabled {
 		return nil, fmt.Errorf("Camera not enabled")
@@ -256,28 +329,72 @@ func (c *Camera) GetFrame(timeout time.Duration) (Frame, error) {
 		return nil, fmt.Errorf("Couldn't dequeue frame")
 	}
 
-	var sl = struct {
-		addr uintptr
-		len  int
-		cap  int
-	}{uintptr(unsafe.Pointer(buf.data[0])), int(buf.length[0]), int(buf.length[0])}
+	nplanes := formatNumPlanes(c.format)
+	planes := make([][]byte, nplanes)
 
-	// Use unsafe to turn sl into a []byte.
-	b := *(*[]byte)(unsafe.Pointer(&sl))
+	for i := 0; i < nplanes; i++ {
+		var sl = struct {
+			addr uintptr
+			len  int
+			cap  int
+		}{uintptr(unsafe.Pointer(buf.data[i])), int(buf.length[i]), int(buf.length[i])}
 
-	return &GrayFrame{
-		Gray: image.Gray{
-			Pix: b,
-			Stride: int(buf.pitch[0]),
-			Rect: image.Rect(0, 0, int(buf.width), int(buf.height)),
-		},
-		camera: c,
-		c: buf,
-	}, nil
+		// Use unsafe to turn sl into a []byte.
+		// This of course breaks if the layout of a slice ever changes,
+		// but this is exactly what mmap() does.
+		// Also beware - a reference to 'buf' must always exist for as
+		// long as a reference to these slices exist!
+		planes[i] = *(*[]byte)(unsafe.Pointer(&sl))
+	}
+
+	switch c.format {
+	case FORMAT_I420:
+		return &YCbCrFrame{
+			YCbCr: image.YCbCr{
+				Y: planes[0],
+				Cb: planes[1],
+				Cr: planes[2],
+				YStride: int(buf.pitch[0]),
+				CStride: int(buf.pitch[1]),
+				SubsampleRatio: image.YCbCrSubsampleRatio420,
+				Rect: image.Rect(0, 0, int(buf.width), int(buf.height)),
+			},
+			buffer: buffer{
+				camera: c,
+				c: buf,
+			},
+		}, nil
+	case FORMAT_YV12:
+		return &GrayFrame{
+			Gray: image.Gray{
+				Pix: planes[0],
+				Stride: int(buf.pitch[0]),
+				Rect: image.Rect(0, 0, int(buf.width), int(buf.height)),
+			},
+			buffer: buffer{
+				camera: c,
+				c: buf,
+			},
+		}, nil
+	case FORMAT_RGBA:
+		return &RGBFrame{
+			NRGBA: image.NRGBA{
+				Pix: planes[0],
+				Stride: int(buf.pitch[0]),
+				Rect: image.Rect(0, 0, int(buf.width), int(buf.height)),
+			},
+			buffer: buffer{
+				camera: c,
+				c: buf,
+			},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("Unknown format")
 }
 
-func (f *GrayFrame) Release() {
-	C.camera_queue_buffer(f.camera.c, f.c)
+func (b *buffer) Release() {
+	C.camera_queue_buffer(b.camera.c, b.c)
 }
 
 func (c *Camera) Close() {
