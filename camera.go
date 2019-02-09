@@ -301,18 +301,18 @@ func formatNumPlanes(format Format) int {
 		// But, that's what MMAL says - one plane, with pitch == width.
 		// Just a grayscale image?
 		return 1
-	case FORMAT_YUYV:
-	case FORMAT_YVYU:
-	case FORMAT_UYVY:
-	case FORMAT_VYUY:
-	case FORMAT_ARGB:
-	case FORMAT_RGBA:
-	case FORMAT_ABGR:
-	case FORMAT_BGRA:
-	case FORMAT_RGB32:
-	case FORMAT_BGR32:
-	case FORMAT_BGR24:
-	case FORMAT_RGB24:
+	case FORMAT_YUYV,
+	     FORMAT_YVYU,
+	     FORMAT_UYVY,
+	     FORMAT_VYUY,
+	     FORMAT_ARGB,
+	     FORMAT_RGBA,
+	     FORMAT_ABGR,
+	     FORMAT_BGRA,
+	     FORMAT_RGB32,
+	     FORMAT_BGR32,
+	     FORMAT_BGR24,
+	     FORMAT_RGB24:
 		return 1
 	}
 
